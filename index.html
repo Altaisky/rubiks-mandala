@@ -236,8 +236,9 @@
     <div class="bottom">
       <div class="hint">
         <strong>Возьмите наклейку и потяните</strong> — нужный слой повернётся
-        в эту сторону. Тяните по фону, чтобы свободно крутить куб. Колесо/щипок —
-        масштаб. Кнопками крутите слои, кнопкой/слайдером — <strong>надуйте в шар</strong>,
+        в эту сторону. Весь куб крутится <strong>только по фону</strong> вокруг него.
+        По чёрной грани/зазору — ничего. Колесо/щипок — масштаб. Кнопками крутите слои,
+        кнопкой/слайдером — <strong>надуйте в шар</strong>,
         а «объём ↔ диск» — <strong>разверните в плоский круг</strong>.
       </div>
 
@@ -651,8 +652,8 @@
       const hit = hits[0];
       const mesh = hit.object;
       const mi = hit.face.materialIndex;
-      // Only a coloured sticker turns a layer; the black plastic just rotates the cube.
-      if (!mesh.material || mesh.material[mi] === plasticMat) return null;
+      const isSticker = !(!mesh.material || mesh.material[mi] === plasticMat);
+      if (!isSticker) return { isSticker: false };   // on the cube, but a black face/gap
 
       const nWorld = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
       _nCube.copy(nWorld).applyQuaternion(_qinv.copy(rotator.quaternion).invert());
@@ -665,7 +666,7 @@
       const cubie = cubies.find(c => c.mesh === mesh);
       const layer = Math.round(cubie.coords[axis]);
       if (layer < 0 || layer > 2) return null;
-      return { axis, layer, faceSign, startPoint: hit.point.clone(), nWorld, triggered: false };
+      return { isSticker: true, axis, layer, faceSign, startPoint: hit.point.clone(), nWorld, triggered: false };
     }
 
     function solveByDrag(e) {
@@ -693,7 +694,7 @@
 
     // Pointer handling for mouse + touch (one-finger drag, two-finger pinch).
     const activePointers = new Map();
-    let lastX = 0, lastY = 0, pinchDist = 0, dragging = false;
+    let lastX = 0, lastY = 0, pinchDist = 0, dragging = false, cubeNoop = false;
 
     canvas.addEventListener('pointerdown', (e) => {
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -702,11 +703,14 @@
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
-        // A press on a colourful sticker turns a layer; anywhere else spins the cube.
-        // Attempt in every shape state (cube, inflated, flattened).
+        // On the cube: a sticker turns a layer, a black face/gap does nothing.
+        // The whole cube spins only when dragging on the background around it.
         if (!rotating) {
           const g = grabSticker(e);
-          if (g) { grab = g; pauseAuto(); return; }
+          if (g) {
+            if (g.isSticker) { grab = g; pauseAuto(); return; }
+            cubeNoop = true; pauseAuto(); return;  // on the cube but black -> nothing
+          }
         }
         dragging = true;
         lastX = e.clientX; lastY = e.clientY;
@@ -727,6 +731,8 @@
         zoomBy(delta * 0.01);
       } else if (grab) {
         if (!grab.triggered) solveByDrag(e);
+      } else if (cubeNoop) {
+        // press started on the cube surface (black face/gap) -> do nothing
       } else if (dragging) {
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
@@ -742,6 +748,7 @@
       if (activePointers.size === 0) {
         dragging = false;
         grab = null;
+        cubeNoop = false;
         canvas.classList.remove('dragging');
         resumeAutoSoon();
       }
