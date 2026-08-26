@@ -703,8 +703,8 @@
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
         // A press on a colourful sticker turns a layer; anywhere else spins the cube.
-        // Allowed in cube and inflated states, disabled only when flattened to a disc.
-        if (!rotating && flat < 0.4) {
+        // Attempt in every shape state (cube, inflated, flattened).
+        if (!rotating) {
           const g = grabSticker(e);
           if (g) { grab = g; pauseAuto(); return; }
         }
