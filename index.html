@@ -641,6 +641,19 @@
     const _tau = new THREE.Vector3();
     const _plane = new THREE.Plane();
     let grab = null; // { axis, layer, faceSign, startPoint, nWorld, triggered }
+    // Bounding sphere of the whole cube (covers the cube, the inflated ball and
+    // the flattened disc) so we can tell "on the cube" (incl. gaps) from background.
+    const cubeBounds = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.7);
+
+    // True when the pointer ray touches the cube's overall region at all.
+    function rayTouchesCube(e) {
+      raycaster.setFromCamera(pointerNdc(e), camera);
+      return raycaster.ray.intersectsSphere(cubeBounds);
+    }
+
+    function pointerNdc(e) {
+      return _ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    }
 
     function grabSticker(e) {
       const w = window.innerWidth, h = window.innerHeight;
@@ -703,15 +716,13 @@
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
-        // On the cube: a sticker turns a layer, a black face/gap does nothing.
+        // On the cube: a sticker turns a layer; a black face/gap does nothing.
         // The whole cube spins only when dragging on the background around it.
-        if (!rotating) {
-          const g = grabSticker(e);
-          if (g) {
-            if (g.isSticker) { grab = g; pauseAuto(); return; }
-            cubeNoop = true; pauseAuto(); return;  // on the cube but black -> nothing
-          }
-        }
+        const g = grabSticker(e);
+        if (g && g.isSticker && !rotating) { grab = g; pauseAuto(); return; }
+        // Anywhere else on the cube (black face, gap, or mid-animation) -> nothing.
+        if (g || rayTouchesCube(e)) { cubeNoop = true; pauseAuto(); return; }
+        // Background around the cube -> rotate the whole cube.
         dragging = true;
         lastX = e.clientX; lastY = e.clientY;
         canvas.classList.add('dragging');
