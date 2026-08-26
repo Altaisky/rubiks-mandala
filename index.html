@@ -702,8 +702,8 @@
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
-        // Left-drag on a colourful sticker turns a layer; anywhere else spins the cube.
-        if (e.button === 0 && morph < 0.4 && flat < 0.4 && !rotating) {
+        // A press on a colourful sticker turns a layer; anywhere else spins the cube.
+        if (morph < 0.4 && flat < 0.4 && !rotating) {
           const g = grabSticker(e);
           if (g) { grab = g; pauseAuto(); return; }
         }
