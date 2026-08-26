@@ -766,17 +766,21 @@
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
-        // On the cube: a sticker turns a layer; a black face/gap does nothing.
-        // The whole cube spins only when dragging on the background around it.
+        // In the cube / inflated state: a sticker turns a layer (side-face rule),
+        // a black face/gap does nothing, and the whole cube spins only on background.
+        // In the flattened-disc state the "layers" are degenerate, so any drag just
+        // spins the whole disc like a 2D object.
         const g = grabSticker(e);
-        if (g && g.isSticker && !rotating) {
-          grab = g; pauseAuto();
-          setGuide(grab.startPoint, grab.startPoint); guideLine.visible = true;
-          return;
+        const onCube = !!(g || rayTouchesCube(e));
+        if (flat < 0.4) {
+          if (g && g.isSticker && !rotating) {
+            grab = g; pauseAuto();
+            setGuide(grab.startPoint, grab.startPoint); guideLine.visible = true;
+            return;
+          }
+          if (onCube) { cubeNoop = true; pauseAuto(); return; }   // black/gap or mid-animation
         }
-        // Anywhere else on the cube (black face, gap, or mid-animation) -> nothing.
-        if (g || rayTouchesCube(e)) { cubeNoop = true; pauseAuto(); return; }
-        // Background around the cube -> rotate the whole cube.
+        // Background (cube) or anywhere on the flattened disc -> rotate the whole cube.
         dragging = true;
         lastX = e.clientX; lastY = e.clientY;
         canvas.classList.add('dragging');
