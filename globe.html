@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Глобус Земли · Rubik's Mandala</title>
+<style>
+  :root {
+    --accent: #37a7ff;
+    --panel: rgba(10, 14, 24, 0.7);
+    --panel-line: rgba(255, 255, 255, 0.12);
+    --text: #f2f5fb;
+    --text-dim: #96a0b5;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, system-ui, sans-serif;
+    color: var(--text);
+    background: #04060d;
+  }
+
+  #scene {
+    position: fixed;
+    inset: 0;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  #scene.dragging { cursor: grabbing; }
+
+  /* ---------- Overlay UI ---------- */
+  .ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 28px;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+  }
+
+  .brand h1 span { color: var(--accent); }
+
+  .brand p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  .hint {
+    max-width: 380px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .controls {
+    pointer-events: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--panel-line);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .1s;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .btn:hover { border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+
+  .btn.primary { background: var(--accent); border-color: transparent; }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  .chip {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 8px 6px;
+  }
+
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 6px 12px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .slider-wrap .chip { padding: 0; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 130px;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), #2a6fe6);
+    border-radius: 999px;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+  }
+
+  .loading {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    font-size: 15px;
+    color: var(--text-dim);
+    background: #04060d;
+    transition: opacity .6s ease;
+  }
+
+  @media (max-width: 560px) {
+    .ui { padding: 18px; }
+    .brand h1 { font-size: 21px; }
+    .hint { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="loading" id="loading">Загружаю Землю…</div>
+
+  <div class="ui">
+    <div class="brand">
+      <h1>Глобус <span>·</span> Земли</h1>
+      <p>Интерактивная 3D-модель нашей планеты</p>
+    </div>
+
+    <div class="bottom">
+      <div class="hint">
+        <strong>Тяните в любую сторону</strong> — вращение свободное, без
+        ограничений. Колесо/щипок — масштаб. Кнопкой <strong>«Развернуть в диск»</strong>
+        топологически растягиваем глобус в плоскую карту: перед — в центре,
+        задняя часть — по краям. Продолжайте крутить — «дырочка» смещается.
+      </div>
+
+      <div class="controls">
+        <button class="btn primary" id="btnSpin">Авто-вращение</button>
+        <button class="btn" id="btnNight">Ночные огни</button>
+        <button class="btn" id="btnAtmo">Атмосфера</button>
+        <button class="btn" id="btnFlat">Развернуть в диск</button>
+        <div class="slider-wrap">
+          <span class="chip">шар</span>
+          <input type="range" id="flatSlider" min="0" max="100" value="0" />
+          <span class="chip">диск</span>
+        </div>
+        <button class="btn" id="btnReset">Вид</button>
+        <span class="chip" id="status">spin: вкл</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    const canvas = document.getElementById('scene');
+
+    // ---------- Renderer ----------
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // ---------- Scene & Camera ----------
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0.55, 3.0);
+    camera.lookAt(0, 0, 0);
+
+    // ---------- Lighting (the Sun) ----------
+    scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(4, 0.6, 2.5);
+    scene.add(sun);
+
+    // ---------- Load textures ----------
+    const loadingEl = document.getElementById('loading');
+    const manager = new THREE.LoadingManager();
+    manager.onLoad = () => {
+      loadingEl.style.opacity = '0';
+      setTimeout(() => loadingEl.remove(), 700);
+    };
+    const loader = new THREE.TextureLoader(manager);
+
+    const BASE = 'https://unpkg.com/three-globe/example/img/';
+    const dayMap = loader.load(BASE + 'earth-blue-marble.jpg');
+    const topoMap = loader.load(BASE + 'earth-topology.png');
+    const waterMap = loader.load(BASE + 'earth-water.png');
+    const nightMap = loader.load(BASE + 'earth-night.jpg');
+    const starsMap = loader.load(BASE + 'night-sky.png');
+
+    dayMap.colorSpace = THREE.SRGBColorSpace;
+    nightMap.colorSpace = THREE.SRGBColorSpace;
+    starsMap.colorSpace = THREE.SRGBColorSpace;
+    dayMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    topoMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    waterMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    // ---------- Starfield background ----------
+    const stars = new THREE.Mesh(
+      new THREE.SphereGeometry(220, 48, 48),
+      new THREE.MeshBasicMaterial({ map: starsMap, side: THREE.BackSide, depthWrite: false })
+    );
+    scene.add(stars);
+
+    // ---------- Earth ----------
+    // The user rotates `rotator` freely (trackball). Inside it, `earthGroup`
+    // holds the axial tilt and `earth` spins on its own axis (auto-rotation).
+    const rotator = new THREE.Group();
+    scene.add(rotator);
+
+    const earthGroup = new THREE.Group();
+    rotator.add(earthGroup);
+    earthGroup.rotation.z = THREE.MathUtils.degToRad(23.4); // axial tilt
+
+    const earthMat = new THREE.MeshPhongMaterial({
+      map: dayMap,
+      bumpMap: topoMap,
+      bumpScale: 0.045,
+      specularMap: waterMap,
+      specular: new THREE.Color(0x2a3545),
+      shininess: 28,
+      emissive: new THREE.Color(0xffd9a0),
+      emissiveMap: nightMap,
+      emissiveIntensity: 1.25,
+      side: THREE.DoubleSide,
+    });
+
+    const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), earthMat);
+    earthGroup.add(earth);
+
+    // Original sphere vertex positions, used as the t=0 state of the flatten morph.
+    const earthOrig = earth.geometry.attributes.position.array.slice();
+
+    // ---------- Atmosphere (fresnel glow) ----------
+    const atmoMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.62 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.4);
+          gl_FragColor = vec4(0.35, 0.62, 1.0, 1.0) * intensity;
+        }`,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+    });
+    const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(1.14, 64, 64), atmoMat);
+    scene.add(atmosphere);
+
+    // ================= Topological flatten: sphere -> flat disk =================
+    // Imagine poking a small hole in the BACK of the ball (the point farthest
+    // from the camera) and stretching the whole surface out until it lies flat.
+    // The front pole lands in the CENTRE of the disc, the back pole at the RIM.
+    // This is a stereographic projection: we pull the whole sphere onto a flat
+    // disc from the back pole (front + centre, back -> edges) — exactly the
+    // "pull open the hole" idea.
+    const SPHERE_R = 1;
+    const _fv = new THREE.Vector3();
+    const _fw = new THREE.Vector3();
+    const _ft = new THREE.Vector3();
+    const _fu = new THREE.Vector3();
+    const _fe2 = new THREE.Vector3();
+
+    // A separate flat disc (the sphere geometry cloned and flattened) that fades
+    // in over the globe. Because it is always a fully-flat disc, the transition
+    // has no ugly folding; its content is re-projected from the globe each frame,
+    // so the "hole" keeps moving as you spin the planet.
+    const flatMat = earthMat.clone();
+    flatMat.transparent = true;
+    flatMat.side = THREE.DoubleSide;
+    const flatGeo = earth.geometry.clone();
+    const flatMesh = new THREE.Mesh(flatGeo, flatMat);
+    flatMesh.visible = false;
+    scene.add(flatMesh);
+
+    let flat = 0;
+    let flatTarget = 0;
+    let lastFlat = -1;
+
+    function applyFlatten(t) {
+      const pos = flatGeo.attributes.position;
+      const arr = pos.array;
+      const orig = earthOrig;
+
+      if (t <= 0.001) {
+        flatMesh.visible = false;
+        earth.visible = true;
+        return;
+      }
+
+      scene.updateMatrixWorld(true);
+      const u = _fu.copy(camera.position).normalize(); // view direction
+      const m = earth.matrixWorld;                     // globe's current orientation
+
+      // A stable in-plane reference direction, perpendicular to the view.
+      _fe2.set(Math.abs(u.y) < 0.95 ? 0 : 1, Math.abs(u.y) < 0.95 ? 1 : 0, 0);
+      _fe2.addScaledVector(u, -u.dot(_fe2)).normalize();
+
+      const Fx = SPHERE_R * u.x, Fy = SPHERE_R * u.y, Fz = SPHERE_R * u.z;
+
+      // Disc radius matched to the globe's on-screen silhouette, so the flat
+      // disc fully replaces the sphere (and never spills outside the view).
+      const D = camera.position.length();
+      const diskR = 1.02 * (D - SPHERE_R) * SPHERE_R / Math.sqrt(Math.max(1e-6, D * D - SPHERE_R * SPHERE_R));
+
+      for (let v = 0; v < pos.count; v++) {
+        const ox = orig[v * 3], oy = orig[v * 3 + 1], oz = orig[v * 3 + 2];
+
+        _fv.set(ox, oy, oz);
+        _fw.copy(_fv).applyMatrix4(m);        // sphere vertex in world space
+
+        const c = _fw.dot(u);
+        _ft.copy(_fw).addScaledVector(u, -c); // component perpendicular to the view
+        let dx, dy, dz;
+        const rs = _ft.length();
+        if (rs < 1e-6) {
+          dx = _fe2.x; dy = _fe2.y; dz = _fe2.z;   // a pole
+        } else {
+          const inv = 1 / rs;
+          dx = _ft.x * inv; dy = _ft.y * inv; dz = _ft.z * inv;
+        }
+
+        // Azimuthal-equidistant unfolding: front pole (theta=0) -> centre,
+        // back pole (theta=PI) -> rim. The front hemisphere fills the inner
+        // half of the disc, the back hemisphere the outer half (the edges).
+        const cc = Math.max(-1, Math.min(1, c / SPHERE_R)); // cos(theta)
+        const theta = Math.acos(cc);
+        const rMapped = diskR * (theta / Math.PI);
+
+        // Flat point in the tangent plane (faces the camera), world space.
+        // flatMesh sits at the origin with identity transform, so local == world.
+        arr[v * 3]     = Fx + dx * rMapped;
+        arr[v * 3 + 1] = Fy + dy * rMapped;
+        arr[v * 3 + 2] = Fz + dz * rMapped;
+      }
+
+      pos.needsUpdate = true;
+      flatGeo.computeVertexNormals();
+      flatMat.opacity = t;
+      flatMesh.visible = true;
+      earth.visible = t < 0.99; // hide the sphere once the disc fully covers it
+      atmosphere.visible = atmoEnabled && t < 0.5;
+    }
+
+    function flatTick() {
+      if (flat !== flatTarget) {
+        flat += (flatTarget - flat) * 0.16;
+        if (Math.abs(flatTarget - flat) < 0.001) flat = flatTarget;
+      }
+    }
+
+    // ================= Free rotation (trackball) & zoom =================
+    // Rotating the OBJECT (not the camera) means there are no poles, no
+    // up-vector lock and no "it won't turn any further" wall in any direction.
+    const MIN_D = 1.4;
+    const MAX_D = 8;
+    const spinAxisUp = new THREE.Vector3();
+    const spinAxisRight = new THREE.Vector3();
+
+    function rotateObject(dx, dy) {
+      // Screen-space axes of the camera -> world axes to spin the ball around.
+      camera.updateMatrixWorld();
+      spinAxisRight.setFromMatrixColumn(camera.matrixWorld, 0); // screen right
+      spinAxisUp.setFromMatrixColumn(camera.matrixWorld, 1);    // screen up
+      // Sign chosen so the surface under the cursor follows the drag.
+      rotator.rotateOnWorldAxis(spinAxisUp, dx * 0.005);
+      rotator.rotateOnWorldAxis(spinAxisRight, dy * 0.005);
+    }
+
+    function zoomBy(delta) {
+      const dir = camera.position.clone().normalize();
+      let d = camera.position.length() + delta;
+      d = Math.max(MIN_D, Math.min(MAX_D, d));
+      camera.position.copy(dir.multiplyScalar(d));
+      camera.lookAt(0, 0, 0);
+    }
+
+    // Pointer handling for mouse + touch (single-finger drag, two-finger pinch).
+    const activePointers = new Map();
+    let lastX = 0, lastY = 0, pinchDist = 0, dragging = false;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.size === 2) {
+        const [a, b] = [...activePointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+      } else if (activePointers.size === 1) {
+        dragging = true;
+        lastX = e.clientX; lastY = e.clientY;
+        canvas.classList.add('dragging');
+      }
+      pauseSpin();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size === 2) {
+        const [a, b] = [...activePointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const delta = d - pinchDist;
+        pinchDist = d;
+        zoomBy(delta * 0.01);
+      } else if (dragging) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        rotateObject(dx, dy);
+      }
+    });
+
+    function endPointer(e) {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.delete(e.pointerId);
+      if (activePointers.size < 2) pinchDist = 0;
+      if (activePointers.size === 0) {
+        dragging = false;
+        canvas.classList.remove('dragging');
+        resumeSpinSoon();
+      }
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    window.addEventListener('pointerup', endPointer);
+
+    window.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoomBy(e.deltaY * 0.001);
+    }, { passive: false });
+
+    // ---------- Controls wiring ----------
+    const btnSpin = document.getElementById('btnSpin');
+    const btnNight = document.getElementById('btnNight');
+    const btnAtmo = document.getElementById('btnAtmo');
+    const btnReset = document.getElementById('btnReset');
+    const status = document.getElementById('status');
+
+    let spinEnabled = true;
+    let nightEnabled = true;
+    let atmoEnabled = true;
+    let spinPaused = false;
+    let resumeTimer = null;
+
+    function pauseSpin() {
+      if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+      spinPaused = true;
+    }
+    function resumeSpinSoon() {
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => { spinPaused = false; resumeTimer = null; }, 2500);
+    }
+
+    function applySpin() {
+      status.textContent = 'spin: ' + (spinEnabled ? 'вкл' : 'выкл');
+      btnSpin.classList.toggle('primary', spinEnabled);
+    }
+
+    btnSpin.addEventListener('click', () => { spinEnabled = !spinEnabled; applySpin(); });
+    btnNight.addEventListener('click', () => {
+      nightEnabled = !nightEnabled;
+      earthMat.emissiveIntensity = nightEnabled ? 1.25 : 0.0;
+      btnNight.classList.toggle('primary', nightEnabled);
+    });
+    btnAtmo.addEventListener('click', () => {
+      atmoEnabled = !atmoEnabled;
+      atmosphere.visible = atmoEnabled;
+      btnAtmo.classList.toggle('primary', atmoEnabled);
+    });
+
+    const btnFlat = document.getElementById('btnFlat');
+    const flatSlider = document.getElementById('flatSlider');
+
+    function refreshFlatUI() {
+      btnFlat.textContent = flatTarget < 0.5 ? 'Развернуть в диск' : 'Обратно в шар';
+      flatSlider.value = String(Math.round(flatTarget * 100));
+    }
+
+    btnFlat.addEventListener('click', () => {
+      flatTarget = flatTarget < 0.5 ? 1 : 0;
+      refreshFlatUI();
+    });
+    flatSlider.addEventListener('input', () => {
+      flatTarget = Number(flatSlider.value) / 100;
+      refreshFlatUI();
+    });
+    refreshFlatUI();
+
+    btnReset.addEventListener('click', () => {
+      camera.position.set(0, 0.55, 3.0);
+      camera.lookAt(0, 0, 0);
+      rotator.quaternion.set(0, 0, 0, 1);
+    });
+
+    applySpin();
+    btnNight.classList.add('primary');
+    btnAtmo.classList.add('primary');
+
+    // ---------- Resize ----------
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ---------- Render loop ----------
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+
+      // Pause the auto-spin while the flatten morph is in progress, so the
+      // projection target stays stable and the transition settles cleanly.
+      const morphing = Math.abs(flat - flatTarget) > 0.0005;
+      if (spinEnabled && !spinPaused && !morphing) earth.rotation.y += dt * 0.09;
+
+      flatTick();
+      // Re-apply the flatten every frame while it is (or was) active, so the
+      // projected map keeps following the spin / user rotation (the hole shifts).
+      if (flat > 0.001 || lastFlat > 0.001) {
+        applyFlatten(flat);
+        lastFlat = flat;
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

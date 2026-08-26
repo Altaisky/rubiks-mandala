@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Куб · Rubik's Mandala</title>
+<style>
+  :root {
+    --accent: #ff5c39;
+    --panel: rgba(20, 22, 30, 0.72);
+    --panel-line: rgba(255, 255, 255, 0.12);
+    --text: #f2f3f7;
+    --text-dim: #9aa0b0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, system-ui, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 800px at 70% 20%, #24304d 0%, #14161e 55%, #0b0c11 100%);
+  }
+
+  #scene {
+    position: fixed;
+    inset: 0;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  #scene.dragging { cursor: grabbing; }
+
+  /* ---------- Overlay UI ---------- */
+  .ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 28px;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+  }
+
+  .brand h1 span {
+    color: var(--accent);
+  }
+
+  .brand p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .hint {
+    max-width: 340px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .controls {
+    pointer-events: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--panel-line);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .1s;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .btn:hover { border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+
+  .btn.primary {
+    background: var(--accent);
+    border-color: transparent;
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  .chip {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 8px 6px;
+  }
+
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 6px 12px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .slider-wrap .chip { padding: 0; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 150px;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), #2a6fe6);
+    border-radius: 999px;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+  }
+
+  .panel {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    max-width: 260px;
+  }
+
+  .panel .title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+
+  .face-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .face-btn {
+    appearance: none;
+    min-width: 42px;
+    height: 42px;
+    border: 1px solid var(--panel-line);
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .1s;
+  }
+
+  .face-btn:hover { border-color: var(--accent); background: rgba(255,92,57,0.14); }
+  .face-btn:active { transform: translateY(1px); }
+
+  @media (max-width: 560px) {
+    .ui { padding: 18px; }
+    .brand h1 { font-size: 21px; }
+    .hint { font-size: 12px; }
+    input[type="range"] { width: 110px; }
+    .panel { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="ui">
+    <div class="brand">
+      <h1>Куб <span>·</span> Rubik's Mandala</h1>
+      <p>Кубик Рубика · 3×3 · надувается в шар</p>
+    </div>
+
+    <div class="bottom">
+      <div class="hint">
+        <strong>Тяните в любую сторону</strong> — вращение свободное, без
+        ограничений. Колесо/щипок — масштаб. Кнопками ниже вращайте
+        <strong>слои кубика</strong>, кнопкой/слайдером — <strong>надуйте в шар</strong>,
+        а кнопкой/слайдером «объём ↔ диск» — <strong>разверните в плоский круг</strong>
+        (перед в центре, задняя часть по краям).
+      </div>
+
+      <div class="controls">
+        <button class="btn" id="btnScramble">Перемешать</button>
+        <button class="btn" id="btnSolve">Собрать</button>
+      </div>
+
+      <div class="controls">
+        <button class="btn primary" id="btnSpin">Авто-вращение</button>
+        <button class="btn" id="btnInflate">Надуть в шар</button>
+        <div class="slider-wrap">
+          <span class="chip">куб</span>
+          <input type="range" id="morphSlider" min="0" max="100" value="0" />
+          <span class="chip">шар</span>
+        </div>
+        <button class="btn" id="btnFlat">Развернуть в диск</button>
+        <div class="slider-wrap">
+          <span class="chip">объём</span>
+          <input type="range" id="flatSlider" min="0" max="100" value="0" />
+          <span class="chip">диск</span>
+        </div>
+        <button class="btn" id="btnReset">Вид</button>
+        <span class="chip" id="status">auto: вкл</span>
+      </div>
+
+      <div class="panel">
+        <div class="title">Вращение слоёв</div>
+        <div class="face-row">
+          <button class="face-btn" data-axis="y" data-layer="2" data-angle="-90" title="Верх">U</button>
+          <button class="face-btn" data-axis="y" data-layer="0" data-angle="90" title="Низ">D</button>
+          <button class="face-btn" data-axis="x" data-layer="0" data-angle="90" title="Лево">L</button>
+          <button class="face-btn" data-axis="x" data-layer="2" data-angle="-90" title="Право">R</button>
+          <button class="face-btn" data-axis="z" data-layer="2" data-angle="-90" title="Перед">F</button>
+          <button class="face-btn" data-axis="z" data-layer="0" data-angle="90" title="Зад">B</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    const canvas = document.getElementById('scene');
+
+    // ---------- Renderer ----------
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // ---------- Scene & Camera ----------
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(3.4, 2.8, 4.6);
+    camera.lookAt(0, 0, 0);
+
+    // ---------- Lighting ----------
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(4, 6, 5);
+    scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0x9fb4ff, 0.35);
+    fill.position.set(-5, -2, -3);
+    scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0xffd0a0, 0.25);
+    rim.position.set(0, -4, 6);
+    scene.add(rim);
+
+    // ================= Rubik's cube: 3x3 real cubies =================
+    const CUBE_SIZE = 1.8;            // full cube width
+    const cubieSize = CUBE_SIZE / 3;  // one cubie 0.6
+    const gap = 0.02;                 // black plastic gap between cubies
+    const geoSize = cubieSize - gap;  // actual cubie geometry size
+    const SEG = 12;                   // subdivisions per face (for the sphere morph)
+    const HALF = CUBE_SIZE / 2;       // inscribed-sphere radius (= cube half-size)
+
+    const rotator = new THREE.Group();
+    scene.add(rotator);
+    const cubeGroup = new THREE.Group();
+    rotator.add(cubeGroup);
+
+    // Shared black-plastic material; it fades out as the shape becomes a sphere,
+    // so the interior faces (which would overlap on the sphere) disappear.
+    const plasticMat = new THREE.MeshStandardMaterial({
+      color: 0x16171d, roughness: 0.6, metalness: 0.05, transparent: true
+    });
+
+    // BoxGeometry face order: 0:+x 1:-x 2:+y 3:-y 4:+z 5:-z
+    // Classic Rubik's colour scheme per axis direction.
+    const FACE_BY_GROUP = [
+      { axis: 'x', sign: 1,  outOn: 2, color: 0xd83a2e },  // +x red   (out when x==2)
+      { axis: 'x', sign: -1, outOn: 0, color: 0xff8c1a },  // -x orange(out when x==0)
+      { axis: 'y', sign: 1,  outOn: 2, color: 0xf4f4f4 },  // +y white (out when y==2)
+      { axis: 'y', sign: -1, outOn: 0, color: 0xffd21e },  // -y yellow(out when y==0)
+      { axis: 'z', sign: 1,  outOn: 2, color: 0x2bb54a },  // +z green (out when z==2)
+      { axis: 'z', sign: -1, outOn: 0, color: 0x2a6fe6 },  // -z blue  (out when z==0)
+    ];
+
+    const cubies = [];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        for (let k = 0; k < 3; k++) {
+          const coords = { x: i, y: j, z: k };
+          const mats = [];
+          const stickerMats = [];
+          for (let g = 0; g < 6; g++) {
+            const f = FACE_BY_GROUP[g];
+            const isOut = (coords[f.axis] === f.outOn);
+            if (isOut) {
+              const mat = new THREE.MeshStandardMaterial({ color: f.color, roughness: 0.4, metalness: 0.05 });
+              mats.push(mat);
+              stickerMats.push(mat);
+            } else {
+              mats.push(plasticMat);
+            }
+          }
+          const geo = new THREE.BoxGeometry(geoSize, geoSize, geoSize, SEG, SEG, SEG);
+          const mesh = new THREE.Mesh(geo, mats);
+          mesh.position.set((i - 1) * cubieSize, (j - 1) * cubieSize, (k - 1) * cubieSize);
+          cubeGroup.add(mesh);
+          // Remember the pristine (solved) transform for the "Собрать" button,
+          // plus the original vertex positions for the sphere morph.
+          cubies.push({
+            mesh,
+            coords,
+            origPos: geo.attributes.position.array.slice(),
+            init: { pos: mesh.position.clone(), quat: mesh.quaternion.clone(), coords: { ...coords } }
+          });
+        }
+      }
+    }
+
+    // Subtle floor grid for a sense of depth.
+    const grid = new THREE.GridHelper(14, 14, 0x2a3550, 0x1c2436);
+    grid.position.y = -3;
+    scene.add(grid);
+
+    // ================= Layer rotation (queued + animated) =================
+    const axisVecs = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+    const center = new THREE.Vector3(1, 1, 1);
+    const moveQueue = [];
+    let rotating = false;
+    let solveAfter = false;
+
+    function startRotation(axis, layer, angle) {
+      moveQueue.push({ axis, layer, angle });
+      if (!rotating) processQueue();
+    }
+
+    function snapCoord(c, axisVec, angle) {
+      const v = new THREE.Vector3(c.coords.x - 1, c.coords.y - 1, c.coords.z - 1);
+      v.applyAxisAngle(axisVec, THREE.MathUtils.degToRad(angle));
+      v.add(center);
+      c.coords = { x: Math.round(v.x), y: Math.round(v.y), z: Math.round(v.z) };
+      c.mesh.position.set(
+        Math.round(c.mesh.position.x / cubieSize) * cubieSize,
+        Math.round(c.mesh.position.y / cubieSize) * cubieSize,
+        Math.round(c.mesh.position.z / cubieSize) * cubieSize
+      );
+    }
+
+    function processQueue() {
+      if (rotating || moveQueue.length === 0) return;
+      rotating = true;
+      const mv = moveQueue.shift();
+
+      const layerCubies = cubies.filter(c => Math.round(c.coords[mv.axis]) === mv.layer);
+      const pivot = new THREE.Group();
+      cubeGroup.add(pivot);
+      layerCubies.forEach(c => pivot.attach(c.mesh));
+
+      const axisVec = axisVecs[mv.axis];
+      const targetQ = new THREE.Quaternion().setFromAxisAngle(axisVec, THREE.MathUtils.degToRad(mv.angle));
+      const startQ = pivot.quaternion.clone();
+      const t0 = performance.now();
+      const DUR = 240;
+
+      function step(now) {
+        const t = Math.min(1, (now - t0) / DUR);
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // easeInOutQuad
+        pivot.quaternion.copy(startQ).slerp(targetQ, eased);
+        if (t < 1) { requestAnimationFrame(step); return; }
+
+        pivot.quaternion.copy(targetQ);
+        scene.updateMatrixWorld(true);
+        layerCubies.forEach(c => cubeGroup.attach(c.mesh));
+        cubeGroup.remove(pivot);
+
+        layerCubies.forEach(c => snapCoord(c, axisVec, mv.angle));
+
+        rotating = false;
+        if (solveAfter) { solveAfter = false; applySolve(); }
+        else { processQueue(); }
+      }
+      requestAnimationFrame(step);
+    }
+
+    // ================= Scramble / Solve =================
+    const MOVES = [
+      { axis: 'x', layer: 2, angle: -90 }, { axis: 'x', layer: 0, angle: 90 },
+      { axis: 'y', layer: 2, angle: -90 }, { axis: 'y', layer: 0, angle: 90 },
+      { axis: 'z', layer: 2, angle: -90 }, { axis: 'z', layer: 0, angle: 90 },
+      { axis: 'x', layer: 1, angle: 90 }, { axis: 'y', layer: 1, angle: 90 }, { axis: 'z', layer: 1, angle: 90 },
+    ];
+
+    function doScramble() {
+      for (let n = 0; n < 20; n++) {
+        const m = MOVES[Math.floor(Math.random() * MOVES.length)];
+        startRotation(m.axis, m.layer, m.angle);
+      }
+    }
+
+    function applySolve() {
+      for (const c of cubies) {
+        c.mesh.position.copy(c.init.pos);
+        c.mesh.quaternion.copy(c.init.quat);
+        c.coords = { ...c.init.coords };
+      }
+    }
+
+    function doSolve() {
+      if (rotating) { moveQueue.length = 0; solveAfter = true; return; }
+      moveQueue.length = 0;
+      applySolve();
+    }
+
+    document.getElementById('btnScramble').addEventListener('click', doScramble);
+    document.getElementById('btnSolve').addEventListener('click', doSolve);
+    document.querySelectorAll('.face-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        startRotation(btn.dataset.axis, Number(btn.dataset.layer), Number(btn.dataset.angle));
+      });
+    });
+
+    // ================= Deform: cube <-> sphere <-> flat disc =================
+    const _m = new THREE.Matrix4();
+    const _minv = new THREE.Matrix4();
+    const _v = new THREE.Vector3();
+    const _w = new THREE.Vector3();
+    const _fu = new THREE.Vector3();
+    const _fe2 = new THREE.Vector3();
+    const DISK_R = 1.7; // radius of the unfolded disc
+
+    function applyDeform(morph, flat) {
+      scene.updateMatrixWorld(true);
+      // Fade the interior plastic whenever either morph is active, so interior
+      // faces (which would collapse onto the surface/disc) do not z-fight.
+      plasticMat.opacity = 1 - THREE.MathUtils.smoothstep(Math.max(morph, flat), 0.6, 1.0);
+
+      const u = _fu.copy(camera.position).normalize(); // view direction
+      _fe2.set(Math.abs(u.y) < 0.95 ? 0 : 1, Math.abs(u.y) < 0.95 ? 1 : 0, 0);
+      _fe2.addScaledVector(u, -u.dot(_fe2)).normalize();
+
+      for (const c of cubies) {
+        const mesh = c.mesh;
+        _m.copy(mesh.matrixWorld);
+        _minv.copy(_m).invert();
+        const pos = mesh.geometry.attributes.position;
+        const arr = pos.array;
+        const orig = c.origPos;
+
+        for (let idx = 0; idx < pos.count; idx++) {
+          const lx = orig[idx * 3], ly = orig[idx * 3 + 1], lz = orig[idx * 3 + 2];
+          _v.set(lx, ly, lz);
+          _w.copy(_v).applyMatrix4(_m);            // cube vertex in world space
+          const len = _w.length() || 1;
+
+          // (1) Inflate the cube to a sphere of radius HALF.
+          const sx = _w.x * (HALF / len), sy = _w.y * (HALF / len), sz = _w.z * (HALF / len);
+          const ix = _w.x + (sx - _w.x) * morph;
+          const iy = _w.y + (sy - _w.y) * morph;
+          const iz = _w.z + (sz - _w.z) * morph;
+
+          // (2) Unfold to a flat disc (azimuthal, axis = view direction).
+          const cPar = ix * u.x + iy * u.y + iz * u.z;
+          const tx = ix - cPar * u.x, ty = iy - cPar * u.y, tz = iz - cPar * u.z;
+          const rs = Math.sqrt(tx * tx + ty * ty + tz * tz);
+          let ddx, ddy, ddz;
+          if (rs < 1e-6) { ddx = _fe2.x; ddy = _fe2.y; ddz = _fe2.z; } // a pole
+          else { ddx = tx / rs; ddy = ty / rs; ddz = tz / rs; }
+          const lenI = Math.sqrt(ix * ix + iy * iy + iz * iz) || 1;
+          const cc = Math.max(-1, Math.min(1, cPar / lenI));
+          const theta = Math.acos(cc);              // angle from the front pole
+          const rMapped = DISK_R * (theta / Math.PI); // front -> centre, back -> rim
+          const dxp = ddx * rMapped, dyp = ddy * rMapped, dzp = ddz * rMapped;
+
+          // (3) Blend by the two factors, then back to local space.
+          const fx = ix + (dxp - ix) * flat;
+          const fy = iy + (dyp - iy) * flat;
+          const fz = iz + (dzp - iz) * flat;
+
+          _w.set(fx, fy, fz).applyMatrix4(_minv);
+          arr[idx * 3] = _w.x;
+          arr[idx * 3 + 1] = _w.y;
+          arr[idx * 3 + 2] = _w.z;
+        }
+        pos.needsUpdate = true;
+        mesh.geometry.computeVertexNormals();
+      }
+    }
+
+    const btnInflate = document.getElementById('btnInflate');
+    const morphSlider = document.getElementById('morphSlider');
+    const btnFlat = document.getElementById('btnFlat');
+    const flatSlider = document.getElementById('flatSlider');
+
+    let morph = 0, morphTarget = 0;
+    let flat = 0, flatTarget = 0;
+    let lastMorph = -1, lastFlat = -1;
+
+    function refreshInflateUI() {
+      btnInflate.textContent = morphTarget < 0.5 ? 'Надуть в шар' : 'Обратно в куб';
+      morphSlider.value = String(Math.round(morphTarget * 100));
+    }
+    function refreshFlatUI() {
+      btnFlat.textContent = flatTarget < 0.5 ? 'Развернуть в диск' : 'Собрать в объём';
+      flatSlider.value = String(Math.round(flatTarget * 100));
+    }
+
+    function deformTick() {
+      if (morph !== morphTarget) {
+        morph += (morphTarget - morph) * 0.12;
+        if (Math.abs(morphTarget - morph) < 0.001) morph = morphTarget;
+      }
+      if (flat !== flatTarget) {
+        flat += (flatTarget - flat) * 0.12;
+        if (Math.abs(flatTarget - flat) < 0.001) flat = flatTarget;
+      }
+    }
+
+    btnInflate.addEventListener('click', () => {
+      morphTarget = morphTarget < 0.5 ? 1 : 0;
+      refreshInflateUI();
+    });
+    morphSlider.addEventListener('input', () => {
+      morphTarget = Number(morphSlider.value) / 100;
+      refreshInflateUI();
+    });
+    btnFlat.addEventListener('click', () => {
+      flatTarget = flatTarget < 0.5 ? 1 : 0;
+      refreshFlatUI();
+    });
+    flatSlider.addEventListener('input', () => {
+      flatTarget = Number(flatSlider.value) / 100;
+      refreshFlatUI();
+    });
+
+    refreshInflateUI();
+    refreshFlatUI();
+
+    // ================= Free rotation (trackball) & zoom =================
+    // The cube is a solid object here, so we rotate `rotator` freely instead of
+    // orbiting the camera — no poles, no up-vector lock, no "stuck" angle.
+    const MIN_D = 3;
+    const MAX_D = 10;
+    const WORLD_UP = new THREE.Vector3(0, 1, 0);
+    const spinAxisUp = new THREE.Vector3();
+    const spinAxisRight = new THREE.Vector3();
+
+    function rotateObject(dx, dy) {
+      camera.updateMatrixWorld();
+      spinAxisRight.setFromMatrixColumn(camera.matrixWorld, 0); // screen right
+      spinAxisUp.setFromMatrixColumn(camera.matrixWorld, 1);    // screen up
+      // Sign chosen so the surface under the cursor follows the drag.
+      rotator.rotateOnWorldAxis(spinAxisUp, dx * 0.005);
+      rotator.rotateOnWorldAxis(spinAxisRight, dy * 0.005);
+    }
+
+    function zoomBy(delta) {
+      const dir = camera.position.clone().normalize();
+      let d = camera.position.length() + delta;
+      d = Math.max(MIN_D, Math.min(MAX_D, d));
+      camera.position.copy(dir.multiplyScalar(d));
+      camera.lookAt(0, 0, 0);
+    }
+
+    // Pointer handling for mouse + touch (one-finger drag, two-finger pinch).
+    const activePointers = new Map();
+    let lastX = 0, lastY = 0, pinchDist = 0, dragging = false;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.size === 2) {
+        const [a, b] = [...activePointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+      } else if (activePointers.size === 1) {
+        dragging = true;
+        lastX = e.clientX; lastY = e.clientY;
+        canvas.classList.add('dragging');
+      }
+      pauseAuto();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size === 2) {
+        const [a, b] = [...activePointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const delta = d - pinchDist;
+        pinchDist = d;
+        zoomBy(delta * 0.01);
+      } else if (dragging) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        rotateObject(dx, dy);
+      }
+    });
+
+    function endPointer(e) {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.delete(e.pointerId);
+      if (activePointers.size < 2) pinchDist = 0;
+      if (activePointers.size === 0) {
+        dragging = false;
+        canvas.classList.remove('dragging');
+        resumeAutoSoon();
+      }
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    window.addEventListener('pointerup', endPointer);
+
+    window.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoomBy(e.deltaY * 0.001);
+    }, { passive: false });
+
+    // ---------- Auto-rotate toggle ----------
+    const btnSpin = document.getElementById('btnSpin');
+    const btnReset = document.getElementById('btnReset');
+    const status = document.getElementById('status');
+
+    let autoEnabled = true;
+    let autoPaused = false;
+    let resumeTimer = null;
+
+    function pauseAuto() {
+      if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+      autoPaused = true;
+    }
+    function resumeAutoSoon() {
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => { autoPaused = false; resumeTimer = null; }, 3500);
+    }
+
+    function applyAuto() {
+      btnSpin.classList.toggle('primary', autoEnabled);
+      status.textContent = 'auto: ' + (autoEnabled ? 'вкл' : 'выкл');
+    }
+
+    btnSpin.addEventListener('click', () => { autoEnabled = !autoEnabled; applyAuto(); });
+
+    btnReset.addEventListener('click', () => {
+      camera.position.set(3.4, 2.8, 4.6);
+      camera.lookAt(0, 0, 0);
+      rotator.quaternion.set(0, 0, 0, 1);
+    });
+
+    applyAuto();
+
+    // ---------- Resize ----------
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ---------- Render loop ----------
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      deformTick();
+      // Re-apply deformation while it is animating, or while the disc is shown
+      // (so the disc content keeps following the cube's rotation).
+      if (Math.abs(morph - lastMorph) > 0.0001 ||
+          Math.abs(flat - lastFlat) > 0.0001 ||
+          flat > 0.001) {
+        applyDeform(morph, flat);
+        lastMorph = morph;
+        lastFlat = flat;
+      }
+      const deforming = Math.abs(morph - morphTarget) > 0.0005 ||
+                        Math.abs(flat - flatTarget) > 0.0005;
+      if (autoEnabled && !autoPaused && !deforming) rotator.rotateOnWorldAxis(WORLD_UP, dt * 0.35);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
