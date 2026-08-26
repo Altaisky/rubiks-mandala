@@ -640,7 +640,7 @@
     const _rt = new THREE.Vector3();
     const _tau = new THREE.Vector3();
     const _plane = new THREE.Plane();
-    let grab = null; // { axis, layer, faceSign, startPoint, nWorld, triggered }
+    let grab = null; // { isSticker, faceAxis, coords, startPoint, nWorld, triggered }
     // Bounding sphere of the whole cube (covers the cube, the inflated ball and
     // the flattened disc) so we can tell "on the cube" (incl. gaps) from background.
     const cubeBounds = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.7);
@@ -653,6 +653,23 @@
 
     function pointerNdc(e) {
       return _ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    }
+
+    // Drawn guide line "describing the side face of the layer being turned".
+    const _dCube = new THREE.Vector3();
+    const _pCube = new THREE.Vector3();
+    const guideMat = new THREE.LineBasicMaterial({ color: 0xffe08a });
+    const guideGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    const guideLine = new THREE.Line(guideGeo, guideMat);
+    guideLine.visible = false;
+    guideLine.frustumCulled = false;
+    scene.add(guideLine);
+
+    function setGuide(a, b) {
+      const pos = guideGeo.attributes.position;
+      pos.array[0] = a.x; pos.array[1] = a.y; pos.array[2] = a.z;
+      pos.array[3] = b.x; pos.array[4] = b.y; pos.array[5] = b.z;
+      pos.needsUpdate = true;
     }
 
     function grabSticker(e) {
@@ -671,15 +688,13 @@
       const nWorld = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
       _nCube.copy(nWorld).applyQuaternion(_qinv.copy(rotator.quaternion).invert());
       const ax = Math.abs(_nCube.x), ay = Math.abs(_nCube.y), az = Math.abs(_nCube.z);
-      let axis, faceSign;
-      if (ax >= ay && ax >= az) { axis = 'x'; faceSign = _nCube.x >= 0 ? 1 : -1; }
-      else if (ay >= az)         { axis = 'y'; faceSign = _nCube.y >= 0 ? 1 : -1; }
-      else                       { axis = 'z'; faceSign = _nCube.z >= 0 ? 1 : -1; }
+      let faceAxis;
+      if (ax >= ay && ax >= az) faceAxis = 'x';
+      else if (ay >= az)         faceAxis = 'y';
+      else                       faceAxis = 'z';
 
       const cubie = cubies.find(c => c.mesh === mesh);
-      const layer = Math.round(cubie.coords[axis]);
-      if (layer < 0 || layer > 2) return null;
-      return { isSticker: true, axis, layer, faceSign, startPoint: hit.point.clone(), nWorld, triggered: false };
+      return { isSticker: true, faceAxis, coords: cubie.coords, startPoint: hit.point.clone(), nWorld, triggered: false };
     }
 
     function solveByDrag(e) {
@@ -692,17 +707,52 @@
       _drag.sub(grab.startPoint);
       _drag.addScaledVector(grab.nWorld, -_drag.dot(grab.nWorld)); // tangential to the face
 
-      // Spin axis = the grabbed face normal, expressed around the cube's own axis.
-      _axw.copy(axisVecs[grab.axis]).applyQuaternion(rotator.quaternion);
-      _rt.copy(grab.startPoint).addScaledVector(_axw, -grab.startPoint.dot(_axw)); // radial
-      if (_rt.lengthSq() < 1e-6) return;          // grabbed at the spin centre
+      // ----- New rule: the sticker is the SIDE face of a layer. -----
+      // The drag direction (in the cube's frame) picks the slice that runs
+      // perpendicular to it; the sticker's coordinate along that slice's axis
+      // gives the layer index. The axis is one of the two in-plane axes of the face.
+      const qinv = _qinv.copy(rotator.quaternion).invert();
+      _dCube.copy(_drag).applyQuaternion(qinv);
+      const inPlane = ['x', 'y', 'z'].filter(a => a !== grab.faceAxis);
+      const I1 = axisVecs[inPlane[0]], I2 = axisVecs[inPlane[1]];
+      const d1 = _dCube.dot(I1), d2 = _dCube.dot(I2);
+      let axis;
+      if (Math.abs(d1) >= Math.abs(d2)) axis = inPlane[1];   // drag mostly along I1 -> turn about I2
+      else                              axis = inPlane[0];   // drag mostly along I2 -> turn about I1
+      const layer = Math.round(grab.coords[axis]);
+
+      // Sign so the sticker follows the drag (radial around the chosen axis).
+      _pCube.copy(grab.startPoint).applyQuaternion(qinv);
+      const aVec = axisVecs[axis];
+      _rt.copy(_pCube).addScaledVector(aVec, -_pCube.dot(aVec));
+      if (_rt.lengthSq() < 1e-6) return;
       _rt.normalize();
-      _tau.crossVectors(_axw, _rt).normalize();
-      const s = _drag.dot(_tau);
+      _tau.crossVectors(aVec, _rt).normalize();
+      const s = _dCube.dot(_tau);
       if (Math.abs(s) < 0.04) return;              // no clear turn direction yet
       const angle = s > 0 ? 90 : -90;
-      startRotation(grab.axis, grab.layer, angle);
+
+      // Guide line from the grabbed sticker to the current drag point (world).
+      _pCube.copy(grab.startPoint).add(_drag);
+      setGuide(grab.startPoint, _pCube);
+
+      startRotation(axis, layer, angle);
       grab.triggered = true;
+    }
+
+    // Draw the guide line from the grabbed sticker to the current drag point.
+    function updateGuide(e) {
+      const w = window.innerWidth, h = window.innerHeight;
+      _ndc.x = (e.clientX / w) * 2 - 1;
+      _ndc.y = -(e.clientY / h) * 2 + 1;
+      raycaster.setFromCamera(_ndc, camera);
+      _plane.setFromNormalAndCoplanarPoint(grab.nWorld, grab.startPoint);
+      if (raycaster.ray.intersectPlane(_plane, _drag)) {
+        _drag.sub(grab.startPoint).addScaledVector(grab.nWorld, -_drag.dot(grab.nWorld));
+        _pCube.copy(grab.startPoint).add(_drag);
+        setGuide(grab.startPoint, _pCube);
+      }
+      guideLine.visible = true;
     }
 
     // Pointer handling for mouse + touch (one-finger drag, two-finger pinch).
@@ -719,7 +769,11 @@
         // On the cube: a sticker turns a layer; a black face/gap does nothing.
         // The whole cube spins only when dragging on the background around it.
         const g = grabSticker(e);
-        if (g && g.isSticker && !rotating) { grab = g; pauseAuto(); return; }
+        if (g && g.isSticker && !rotating) {
+          grab = g; pauseAuto();
+          setGuide(grab.startPoint, grab.startPoint); guideLine.visible = true;
+          return;
+        }
         // Anywhere else on the cube (black face, gap, or mid-animation) -> nothing.
         if (g || rayTouchesCube(e)) { cubeNoop = true; pauseAuto(); return; }
         // Background around the cube -> rotate the whole cube.
@@ -741,6 +795,7 @@
         pinchDist = d;
         zoomBy(delta * 0.01);
       } else if (grab) {
+        updateGuide(e);                    // draw the side-face guide line
         if (!grab.triggered) solveByDrag(e);
       } else if (cubeNoop) {
         // press started on the cube surface (black face/gap) -> do nothing
@@ -760,6 +815,7 @@
         dragging = false;
         grab = null;
         cubeNoop = false;
+        guideLine.visible = false;
         canvas.classList.remove('dragging');
         resumeAutoSoon();
       }
