@@ -686,7 +686,7 @@
       _tau.crossVectors(_axw, _rt).normalize();
       const s = _drag.dot(_tau);
       if (Math.abs(s) < 0.04) return;              // no clear turn direction yet
-      const angle = (s > 0 ? 90 : -90) * grab.faceSign;
+      const angle = s > 0 ? 90 : -90;
       startRotation(grab.axis, grab.layer, angle);
       grab.triggered = true;
     }
@@ -703,7 +703,8 @@
         grab = null; // two-finger gesture -> zoom, not a layer turn
       } else if (activePointers.size === 1) {
         // A press on a colourful sticker turns a layer; anywhere else spins the cube.
-        if (morph < 0.4 && flat < 0.4 && !rotating) {
+        // Allowed in cube and inflated states, disabled only when flattened to a disc.
+        if (!rotating && flat < 0.4) {
           const g = grabSticker(e);
           if (g) { grab = g; pauseAuto(); return; }
         }
