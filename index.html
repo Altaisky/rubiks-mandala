@@ -692,10 +692,10 @@
       m.emissiveIntensity = 0.65;
     }
 
-    // Highlight just one cubie's stickers (the one you pressed).
-    function highlightCubie(c) {
+    // Highlight just the one sticker square you pressed.
+    function highlightOne(m) {
       clearHighlight();
-      for (const m of c.mesh.material) pushHighlight(m);
+      pushHighlight(m);
     }
 
     // Highlight every sticker of the layer (cube axis + index) => the "ring".
@@ -729,7 +729,8 @@
       else                       faceAxis = 'z';
 
       const cubie = cubies.find(c => c.mesh === mesh);
-      return { isSticker: true, faceAxis, coords: cubie.coords, cubie, startPoint: hit.point.clone(), nWorld, triggered: false };
+      return { isSticker: true, faceAxis, coords: cubie.coords, cubie, mat: mesh.material[mi],
+               startPoint: hit.point.clone(), nWorld, triggered: false };
     }
 
     function solveByDrag(e) {
@@ -804,7 +805,7 @@
         const onCube = !!(g || rayTouchesCube(e));
         if (g && g.isSticker && !rotating) {
           grab = g; pauseAuto();
-          highlightCubie(g.cubie);
+          highlightOne(g.mat);
           setGuide(grab.startPoint, grab.startPoint); guideLine.visible = true;
           return;
         }
