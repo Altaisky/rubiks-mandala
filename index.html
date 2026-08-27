@@ -689,7 +689,7 @@
       if (m === plasticMat) return;
       highlighted.push({ mat: m, emissive: m.emissive.clone(), intensity: m.emissiveIntensity });
       m.emissive.copy(HIGHLIGHT);
-      m.emissiveIntensity = 0.65;
+      m.emissiveIntensity = 1.0;
     }
 
     // Highlight just the one sticker square you pressed.
@@ -803,7 +803,7 @@
         // slice); a black face/gap does nothing; the whole cube spins only on background.
         const g = grabSticker(e);
         const onCube = !!(g || rayTouchesCube(e));
-        if (g && g.isSticker && !rotating) {
+        if (g && g.isSticker) {
           grab = g; pauseAuto();
           highlightOne(g.mat);
           setGuide(grab.startPoint, grab.startPoint); guideLine.visible = true;
