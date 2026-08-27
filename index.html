@@ -659,6 +659,9 @@
     const _dCube = new THREE.Vector3();
     const _pCube = new THREE.Vector3();
     const _pc = new THREE.Vector3();
+    const _view = new THREE.Vector3();
+    const _wn = new THREE.Vector3();
+    const _cw = new THREE.Vector3();
     const guideMat = new THREE.LineBasicMaterial({ color: 0xffe08a });
     const guideGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     const guideLine = new THREE.Line(guideGeo, guideMat);
@@ -716,21 +719,24 @@
       if (!hits.length) return null;
       const hit = hits[0];
       const mesh = hit.object;
-      const mi = hit.face.materialIndex;
-      const isSticker = !(!mesh.material || mesh.material[mi] === plasticMat);
-      if (!isSticker) return { isSticker: false };   // on the cube, but a black face/gap
-
-      const nWorld = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
-      _nCube.copy(nWorld).applyQuaternion(_qinv.copy(rotator.quaternion).invert());
-      const ax = Math.abs(_nCube.x), ay = Math.abs(_nCube.y), az = Math.abs(_nCube.z);
-      let faceAxis;
-      if (ax >= ay && ax >= az) faceAxis = 'x';
-      else if (ay >= az)         faceAxis = 'y';
-      else                       faceAxis = 'z';
-
       const cubie = cubies.find(c => c.mesh === mesh);
-      return { isSticker: true, faceAxis, coords: cubie.coords, cubie, mat: mesh.material[mi],
-               startPoint: hit.point.clone(), nWorld, triggered: false };
+
+      // Which of this cubie's stickers faces the camera -> the "square" to highlight.
+      _cw.setFromMatrixPosition(mesh.matrixWorld);
+      _view.copy(camera.position).sub(_cw).normalize();
+      let bestMat = null, bestN = null, bestDot = -2;
+      for (let g = 0; g < 6; g++) {
+        const m = mesh.material[g];
+        if (!m || m === plasticMat) continue;
+        _wn.copy(axisVecs[FACE_BY_GROUP[g].axis]).multiplyScalar(g % 2 === 0 ? 1 : -1);
+        _wn.transformDirection(mesh.matrixWorld);
+        const d = _wn.dot(_view);
+        if (d > bestDot) { bestDot = d; bestMat = m; bestN = _wn.clone(); }
+      }
+      if (!bestMat) return { isSticker: false };   // an interior cubie (no visible sticker)
+
+      return { isSticker: true, cubie, coords: cubie.coords, mat: bestMat,
+               startPoint: hit.point.clone(), nWorld: bestN, triggered: false };
     }
 
     function solveByDrag(e) {
