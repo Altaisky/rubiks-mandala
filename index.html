@@ -643,7 +643,7 @@
     let grab = null; // { isSticker, faceAxis, coords, startPoint, nWorld, triggered }
     // Bounding sphere of the whole cube (covers the cube, the inflated ball and
     // the flattened disc) so we can tell "on the cube" (incl. gaps) from background.
-    const cubeBounds = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.7);
+    const cubeBounds = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.6);
 
     // True when the pointer ray touches the cube's overall region at all.
     function rayTouchesCube(e) {
@@ -721,22 +721,30 @@
       const mesh = hit.object;
       const cubie = cubies.find(c => c.mesh === mesh);
 
-      // Which of this cubie's stickers faces the camera -> the "square" to highlight.
-      _cw.setFromMatrixPosition(mesh.matrixWorld);
-      _view.copy(camera.position).sub(_cw).normalize();
-      let bestMat = null, bestN = null, bestDot = -2;
-      for (let g = 0; g < 6; g++) {
-        const m = mesh.material[g];
-        if (!m || m === plasticMat) continue;
-        _wn.copy(axisVecs[FACE_BY_GROUP[g].axis]).multiplyScalar(g % 2 === 0 ? 1 : -1);
-        _wn.transformDirection(mesh.matrixWorld);
-        const d = _wn.dot(_view);
-        if (d > bestDot) { bestDot = d; bestMat = m; bestN = _wn.clone(); }
-      }
-      if (!bestMat) return { isSticker: false };   // an interior cubie (no visible sticker)
+      // The sticker the ray actually hit -> the exact square that was pressed.
+      const mi = hit.face.materialIndex;
+      let mat = (mesh.material && mesh.material[mi] !== plasticMat) ? mesh.material[mi] : null;
+      let nWorld = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
 
-      return { isSticker: true, cubie, coords: cubie.coords, mat: bestMat,
-               startPoint: hit.point.clone(), nWorld: bestN, triggered: false };
+      // If the ray grazed a black plastic face, fall back to the cubie's visible
+      // sticker (the camera-facing one) so there is always a reaction.
+      if (!mat) {
+        _cw.setFromMatrixPosition(mesh.matrixWorld);
+        _view.copy(camera.position).sub(_cw).normalize();
+        let bestDot = -2;
+        for (let g = 0; g < 6; g++) {
+          const m = mesh.material[g];
+          if (!m || m === plasticMat) continue;
+          _wn.copy(axisVecs[FACE_BY_GROUP[g].axis]).multiplyScalar(g % 2 === 0 ? 1 : -1);
+          _wn.transformDirection(mesh.matrixWorld);
+          const d = _wn.dot(_view);
+          if (d > bestDot) { bestDot = d; mat = m; nWorld = _wn.clone(); }
+        }
+      }
+      if (!mat) return { isSticker: false };   // an interior cubie (no visible sticker)
+
+      return { isSticker: true, cubie, coords: cubie.coords, mat,
+               startPoint: hit.point.clone(), nWorld, triggered: false };
     }
 
     function solveByDrag(e) {
